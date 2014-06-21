@@ -1,4 +1,4 @@
-package main
+package sanitiser
 
 import (
 	"fmt"
@@ -24,13 +24,13 @@ func contains(domains []string, domain string) bool {
 	return false
 }
 
-func Sanitise(obj interface{}, domain string) error {
+func traverseObjects(obj interface{}, domain string, hierarchy string) error {
 
 	var v reflect.Value
 	var t reflect.Type
 	var ok bool
 
-	fmt.Printf("%v(type %T)\n", obj, obj)
+	fmt.Printf("%v.%v(type %T)\n", hierarchy, obj, obj)
 
 	// make sure this is a pointer, so that we can update the contents if needed
 	if v, ok = obj.(reflect.Value); !ok {
@@ -49,7 +49,7 @@ func Sanitise(obj interface{}, domain string) error {
 		return nil
 	}
 
-	fmt.Printf("%v(type %T)\n", v, v)
+	fmt.Printf("%v.%v(type %T)\n", hierarchy, v, v)
 
 	t = reflect.TypeOf(v.Interface())
 	k := t.Kind()
@@ -59,13 +59,16 @@ func Sanitise(obj interface{}, domain string) error {
 		keys := v.MapKeys()
 		for _, key := range keys {
 
-			Sanitise(v.MapIndex(key), domain)
+			if err := traverseObjects(v.MapIndex(key), domain, hierarchy+"["+fmt.Sprintf("%v", key.Elem())+"]"); err != nil {
+
+				return err
+			}
 		}
 	} else if k == reflect.Struct {
 
 		for i := 0; i < t.NumField(); i++ {
 
-			fmt.Printf("Processing field %v(%v)\n", t.Field(i).Type, t.Field(i).Name)
+			fmt.Printf("Processing field %v.%v(%v)\n", hierarchy, t.Field(i).Name, t.Field(i).Type)
 			field := t.Field(i)
 			field_kind := field.Type.Kind()
 
@@ -73,24 +76,24 @@ func Sanitise(obj interface{}, domain string) error {
 
 				// the sanitise tag's value should be a comma-separated list of
 				// domains
-				fmt.Printf("Field %v(type %T) has a sanitise tag\n", field.Name, v.Field(i))
+				fmt.Printf("Field %v.%v(type %T) has a sanitise tag\n", hierarchy, field.Name, v.Field(i))
 				domains := parseTag(tag)
 				if contains(domains, domain) || contains(domains, "*") {
 					// sanitise this field
 					if !v.Field(i).CanSet() {
 
-						return fmt.Errorf("Unable to set zero value for %v", t.Field(i).Name)
+						return fmt.Errorf("Unable to set zero value for %v.%v", hierarchy, t.Field(i).Name)
 					}
 
-					fmt.Printf("Sanitising field %v\n", t.Field(i).Name)
+					fmt.Printf("Sanitising field %v.%v\n", hierarchy, t.Field(i).Name)
 					v.Field(i).Set(reflect.New(t.Field(i).Type).Elem())
 				}
 			} else if field_kind == reflect.Struct || field_kind == reflect.Interface {
 
 				sv := v.Field(i)
-				fmt.Printf("%v(type %T)\n", sv, sv)
+				fmt.Printf("Processing object %v.%v(type %T)\n", hierarchy, sv, sv)
 
-				if err := Sanitise(sv, domain); err != nil {
+				if err := traverseObjects(sv, domain, hierarchy+"."+t.Field(i).Name); err != nil {
 
 					return err
 				}
@@ -99,4 +102,9 @@ func Sanitise(obj interface{}, domain string) error {
 	}
 
 	return nil
+}
+
+func Sanitise(obj interface{}, domain string) error {
+
+	return traverseObjects(obj, domain, "")
 }
