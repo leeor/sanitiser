@@ -11,11 +11,11 @@ func parseTag(tag string) []string {
 	return strings.Split(tag, ",")
 }
 
-func contains(domains []string, domain string) bool {
+func contains(contexts []string, context string) bool {
 
-	for _, d := range domains {
+	for _, d := range contexts {
 
-		if d == domain {
+		if d == context {
 
 			return true
 		}
@@ -24,7 +24,7 @@ func contains(domains []string, domain string) bool {
 	return false
 }
 
-func traverseObjects(obj interface{}, domain string, hierarchy string) error {
+func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
 	var v reflect.Value
 	var t reflect.Type
@@ -59,7 +59,7 @@ func traverseObjects(obj interface{}, domain string, hierarchy string) error {
 		keys := v.MapKeys()
 		for _, key := range keys {
 
-			if err := traverseObjects(v.MapIndex(key), domain, hierarchy+"["+fmt.Sprintf("%v", key.Elem())+"]"); err != nil {
+			if err := traverseObjects(v.MapIndex(key), context, hierarchy+"["+fmt.Sprintf("%v", key.Elem())+"]"); err != nil {
 
 				return err
 			}
@@ -75,10 +75,10 @@ func traverseObjects(obj interface{}, domain string, hierarchy string) error {
 			if tag := field.Tag.Get("sanitise"); len(tag) > 0 {
 
 				// the sanitise tag's value should be a comma-separated list of
-				// domains
+				// contexts
 				fmt.Printf("Field %v.%v(type %T) has a sanitise tag\n", hierarchy, field.Name, v.Field(i))
-				domains := parseTag(tag)
-				if contains(domains, domain) || contains(domains, "*") {
+				contexts := parseTag(tag)
+				if contains(contexts, context) || contains(contexts, "*") {
 					// sanitise this field
 					if !v.Field(i).CanSet() {
 
@@ -93,7 +93,7 @@ func traverseObjects(obj interface{}, domain string, hierarchy string) error {
 				sv := v.Field(i)
 				fmt.Printf("Processing object %v.%v(type %T)\n", hierarchy, sv, sv)
 
-				if err := traverseObjects(sv, domain, hierarchy+"."+t.Field(i).Name); err != nil {
+				if err := traverseObjects(sv, context, hierarchy+"."+t.Field(i).Name); err != nil {
 
 					return err
 				}
@@ -104,7 +104,7 @@ func traverseObjects(obj interface{}, domain string, hierarchy string) error {
 	return nil
 }
 
-func Sanitise(obj interface{}, domain string) error {
+func Sanitise(obj interface{}, context string) error {
 
-	return traverseObjects(obj, domain, "")
+	return traverseObjects(obj, context, "")
 }
