@@ -6,6 +6,15 @@ import (
 	"strings"
 )
 
+type Logger func(format string, v ...interface{})
+
+var dbg Logger
+
+func init() {
+
+	dbg = func(string, ...interface{}) {}
+}
+
 func parseTag(tag string) []string {
 
 	return strings.Split(tag, ",")
@@ -30,7 +39,7 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 	var t reflect.Type
 	var ok bool
 
-	fmt.Printf("%v.%v(type %T)\n", hierarchy, obj, obj)
+	dbg("%v.%v(type %T)\n", hierarchy, obj, obj)
 
 	// make sure this is a pointer, so that we can update the contents if needed
 	if v, ok = obj.(reflect.Value); !ok {
@@ -40,7 +49,7 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
 	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
 
-		fmt.Println("object is a pointer or an interface, calling Elem()")
+		dbg("object is a pointer or an interface, calling Elem()\n")
 		v = v.Elem()
 	}
 
@@ -49,7 +58,7 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 		return nil
 	}
 
-	fmt.Printf("%v.%v(type %T)\n", hierarchy, v, v)
+	dbg("%v.%v(type %T)\n", hierarchy, v, v)
 
 	t = reflect.TypeOf(v.Interface())
 	k := t.Kind()
@@ -68,7 +77,7 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
 		for i := 0; i < t.NumField(); i++ {
 
-			fmt.Printf("Processing field %v.%v(%v)\n", hierarchy, t.Field(i).Name, t.Field(i).Type)
+			dbg("Processing field %v.%v(%v)\n", hierarchy, t.Field(i).Name, t.Field(i).Type)
 			field := t.Field(i)
 			field_kind := field.Type.Kind()
 
@@ -76,7 +85,7 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
 				// the sanitise tag's value should be a comma-separated list of
 				// contexts
-				fmt.Printf("Field %v.%v(type %T) has a sanitise tag\n", hierarchy, field.Name, v.Field(i))
+				dbg("Field %v.%v(type %T) has a sanitise tag\n", hierarchy, field.Name, v.Field(i))
 				contexts := parseTag(tag)
 				if contains(contexts, context) || contains(contexts, "*") {
 					// sanitise this field
@@ -85,13 +94,13 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 						return fmt.Errorf("Unable to set zero value for %v.%v", hierarchy, t.Field(i).Name)
 					}
 
-					fmt.Printf("Sanitising field %v.%v\n", hierarchy, t.Field(i).Name)
+					dbg("Sanitising field %v.%v\n", hierarchy, t.Field(i).Name)
 					v.Field(i).Set(reflect.New(t.Field(i).Type).Elem())
 				}
 			} else if field_kind == reflect.Struct || field_kind == reflect.Interface {
 
 				sv := v.Field(i)
-				fmt.Printf("Processing object %v.%v(type %T)\n", hierarchy, sv, sv)
+				dbg("Processing object %v.%v(type %T)\n", hierarchy, sv, sv)
 
 				if err := traverseObjects(sv, context, hierarchy+"."+t.Field(i).Name); err != nil {
 
@@ -107,4 +116,9 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 func Sanitise(obj interface{}, context string) error {
 
 	return traverseObjects(obj, context, "")
+}
+
+func SetLogger(f Logger) {
+
+	dbg = f
 }
