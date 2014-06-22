@@ -68,7 +68,8 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 		keys := v.MapKeys()
 		for _, key := range keys {
 
-			if err := traverseObjects(v.MapIndex(key), context, hierarchy+"["+fmt.Sprintf("%v", key.Elem())+"]"); err != nil {
+			dbg("Processing object %v.%v[%v]\n", hierarchy, t.Name(), key)
+			if err := traverseObjects(v.MapIndex(key), context, hierarchy+"["+fmt.Sprintf("%v", key)+"]"); err != nil {
 
 				return err
 			}
