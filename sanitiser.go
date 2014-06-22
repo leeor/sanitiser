@@ -98,7 +98,9 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 					dbg("Sanitising field %v.%v\n", hierarchy, t.Field(i).Name)
 					v.Field(i).Set(reflect.New(t.Field(i).Type).Elem())
 				}
-			} else if field_kind == reflect.Struct || field_kind == reflect.Interface {
+			}
+
+			if field_kind == reflect.Struct || field_kind == reflect.Interface || field_kind == reflect.Ptr || field_kind == reflect.Map {
 
 				sv := v.Field(i)
 				dbg("Processing object %v.%v(type %T)\n", hierarchy, sv, sv)
