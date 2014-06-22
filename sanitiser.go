@@ -99,6 +99,11 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
 					dbg("Sanitising field %v.%v\n", hierarchy, t.Field(i).Name)
 					v.Field(i).Set(reflect.New(t.Field(i).Type).Elem())
+
+					// no point in continuing to traverse this field, even if
+					// it's a struct of some sort, it was assigned the zero
+					// value.
+					continue
 				}
 			}
 
