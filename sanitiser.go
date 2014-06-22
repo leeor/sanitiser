@@ -35,6 +35,8 @@ func contains(contexts []string, context string) bool {
 
 func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
+	// TODO: improve debug messages
+
 	var v reflect.Value
 	var t reflect.Type
 	var ok bool
