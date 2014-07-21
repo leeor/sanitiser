@@ -128,7 +128,16 @@ func Sanitise(obj interface{}, context string) error {
 	return traverseObjects(obj, context, "")
 }
 
+func nullLogger(format string, v ...interface{}) {
+}
+
 func SetLogger(f Logger) {
 
-	dbg = f
+	if f != nil {
+
+		dbg = f
+	} else {
+
+		dbg = nullLogger
+	}
 }
