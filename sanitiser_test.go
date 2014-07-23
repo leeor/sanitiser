@@ -11,6 +11,7 @@ type testStruct1 struct {
 	StructPtrField *testStruct1            `sanitise:"testContext2"`
 	StructField    testStruct2             `sanitise:"testContext2"`
 	InterfaceField interface{}             `sanitise:"testContext1"`
+	AnotherInt     int
 }
 
 type testStruct2 struct {
@@ -18,17 +19,34 @@ type testStruct2 struct {
 	IntField       int     `sanitise:"testContext1"`
 	FloatField     float64 `sanitise:"testContext2"`
 	ByteSliceField []byte  `sanitise:"testContext1"`
+	AnotherString  string
+}
+
+func (o *testStruct1) Sanitise(context string) {
+
+	if context == "testContext1" {
+
+		o.AnotherInt = 0
+	}
+}
+
+func (o *testStruct2) Sanitise(context string) {
+
+	if context == "testContext1" {
+
+		o.AnotherString = ""
+	}
 }
 
 func newTestObj(depth int) (obj *testStruct1) {
 
-	obj = &testStruct1{"String Value", 4, 5.27, []byte("bytes"), map[string]*testStruct1{}, nil, testStruct2{}, "some string"}
+	obj = &testStruct1{"String Value", 4, 5.27, []byte("bytes"), map[string]*testStruct1{}, nil, testStruct2{}, "some string", 7}
 
 	if depth > 0 {
 
 		obj.MapField["testObj"] = newTestObj(depth - 1)
 		obj.StructPtrField = newTestObj(depth - 1)
-		obj.StructField = testStruct2{"Another String", 6, 90.27, []byte("and some more bytes")}
+		obj.StructField = testStruct2{"Another String", 6, 90.27, []byte("and some more bytes"), "Yet Another String"}
 	}
 
 	return
@@ -41,6 +59,7 @@ func (obj *testStruct1) expectContext1() *testStruct1 {
 	obj.ByteSliceField = []byte("")
 	obj.MapField = map[string]*testStruct1{}
 	obj.InterfaceField = nil
+	obj.AnotherInt = 0
 
 	if obj.StructPtrField != nil {
 
@@ -72,6 +91,7 @@ func (obj testStruct2) expectContext1() *testStruct2 {
 	obj.StringField = ""
 	obj.IntField = 0
 	obj.ByteSliceField = []byte("")
+	obj.AnotherString = ""
 
 	return &obj
 }
@@ -146,6 +166,12 @@ func (this testStruct1) equals(that testStruct1, t *testing.T) (equal bool) {
 		equal = false
 	}
 
+	if this.AnotherInt != that.AnotherInt {
+
+		t.Logf("Int fields differ: %+v != %+v\n", this.AnotherInt, that.AnotherInt)
+		equal = false
+	}
+
 	return
 }
 
@@ -174,6 +200,12 @@ func (this testStruct2) equals(that testStruct2, t *testing.T) (equal bool) {
 	if string(this.ByteSliceField) != string(that.ByteSliceField) {
 
 		t.Logf("ByteSlice fields differ: %+v != %+v\n", this.ByteSliceField, that.ByteSliceField)
+		equal = false
+	}
+
+	if this.AnotherString != that.AnotherString {
+
+		t.Logf("AnotherString fields differ: \"%+v\" != \"%+v\"\n", this.AnotherString, that.AnotherString)
 		equal = false
 	}
 

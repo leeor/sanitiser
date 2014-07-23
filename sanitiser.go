@@ -8,6 +8,10 @@ import (
 
 type Logger func(format string, v ...interface{})
 
+type Sanitiser interface {
+	Sanitise(context string)
+}
+
 var dbg Logger
 
 func init() {
@@ -47,6 +51,18 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 	if v, ok = obj.(reflect.Value); !ok {
 
 		v = reflect.ValueOf(obj)
+	}
+
+	// Start by calling the Sanitise method if the object has the Sanitiser
+	// interface
+	if s, ok := v.Interface().(Sanitiser); ok {
+
+		dbg("Object of type %T supports the Sanitiser interface, invoking Sanitise()\n", v.Interface())
+		s.Sanitise(context)
+		//v = reflect.ValueOf(s.Sanitise(context)).Elem()
+	} else {
+
+		dbg("Object of type %T does not supports the Sanitiser interface\n", v.Interface())
 	}
 
 	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
@@ -109,12 +125,24 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
 			if field_kind == reflect.Struct || field_kind == reflect.Interface || field_kind == reflect.Ptr || field_kind == reflect.Map {
 
-				sv := v.Field(i)
-				dbg("Processing object %v.%v(type %T)\n", hierarchy, sv, sv)
+				var sv reflect.Value
 
-				if err := traverseObjects(sv, context, hierarchy+"."+t.Field(i).Name); err != nil {
+				if field_kind != reflect.Ptr {
 
-					return err
+					sv = v.Field(i).Addr()
+				} else {
+
+					sv = v.Field(i)
+				}
+
+				if !sv.IsNil() {
+
+					dbg("Processing object %v.%v(type %T)\n", hierarchy, sv, sv)
+
+					if err := traverseObjects(sv, context, hierarchy+"."+t.Field(i).Name); err != nil {
+
+						return err
+					}
 				}
 			}
 		}
