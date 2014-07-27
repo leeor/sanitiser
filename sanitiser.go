@@ -53,6 +53,12 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 		v = reflect.ValueOf(obj)
 	}
 
+	for v.Kind() == reflect.Ptr && reflect.Indirect(v).Kind() == reflect.Interface {
+
+		dbg("object is a pointer to an interface, calling Elem()\n")
+		v = v.Elem()
+	}
+
 	// Start by calling the Sanitise method if the object has the Sanitiser
 	// interface
 	if s, ok := v.Interface().(Sanitiser); ok {

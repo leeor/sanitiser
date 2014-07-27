@@ -20,6 +20,7 @@ type testStruct2 struct {
 	FloatField     float64 `sanitise:"testContext2"`
 	ByteSliceField []byte  `sanitise:"testContext1"`
 	AnotherString  string
+	AnotherInt     int
 }
 
 func (o *testStruct1) Sanitise(context string) {
@@ -35,6 +36,9 @@ func (o *testStruct2) Sanitise(context string) {
 	if context == "testContext1" {
 
 		o.AnotherString = ""
+	} else if context == "testContext2" {
+
+		o.AnotherInt = 0
 	}
 }
 
@@ -46,7 +50,8 @@ func newTestObj(depth int) (obj *testStruct1) {
 
 		obj.MapField["testObj"] = newTestObj(depth - 1)
 		obj.StructPtrField = newTestObj(depth - 1)
-		obj.StructField = testStruct2{"Another String", 6, 90.27, []byte("and some more bytes"), "Yet Another String"}
+		obj.StructField = testStruct2{"Another String", 6, 90.27, []byte("and some more bytes"), "Yet Another String", 8}
+		obj.InterfaceField = &testStruct2{"Another String", 6, 90.27, []byte("and some more bytes"), "Yet Another String", 8}
 	}
 
 	return
@@ -78,6 +83,11 @@ func (obj *testStruct1) expectContext2() *testStruct1 {
 	obj.StructPtrField = nil
 	obj.StructField = testStruct2{}
 
+	if o, ok := obj.InterfaceField.(*testStruct2); ok {
+
+		obj.InterfaceField = o.expectContext2()
+	}
+
 	for _, v := range obj.MapField {
 
 		v.expectContext2()
@@ -100,6 +110,7 @@ func (obj testStruct2) expectContext2() *testStruct2 {
 
 	obj.StringField = ""
 	obj.FloatField = 0.0
+	obj.AnotherInt = 0
 
 	return &obj
 }
@@ -160,10 +171,24 @@ func (this testStruct1) equals(that testStruct1, t *testing.T) (equal bool) {
 		equal = false
 	}
 
-	if this.InterfaceField != that.InterfaceField {
+	if this.InterfaceField != nil {
 
-		t.Logf("Interface fields differ: %+v != %+v\n", this.InterfaceField, that.InterfaceField)
-		equal = false
+		if that.InterfaceField == nil {
+
+			t.Logf("Interface fields differ: %+v != %+v\n", this.InterfaceField, that.InterfaceField)
+			equal = false
+		} else if s, ok := this.InterfaceField.(string); ok {
+
+			if s2, ok := that.InterfaceField.(string); !ok || s != s2 {
+
+				t.Logf("Interface fields differ: %+v != %+v\n", this.InterfaceField, that.InterfaceField)
+				equal = false
+			}
+		} else if !this.InterfaceField.(*testStruct2).equals(*that.InterfaceField.(*testStruct2), t) {
+
+			t.Logf("Interface fields differ: %+v != %+v\n", this.InterfaceField, that.InterfaceField)
+			equal = false
+		}
 	}
 
 	if this.AnotherInt != that.AnotherInt {
@@ -206,6 +231,12 @@ func (this testStruct2) equals(that testStruct2, t *testing.T) (equal bool) {
 	if this.AnotherString != that.AnotherString {
 
 		t.Logf("AnotherString fields differ: \"%+v\" != \"%+v\"\n", this.AnotherString, that.AnotherString)
+		equal = false
+	}
+
+	if this.AnotherInt != that.AnotherInt {
+
+		t.Logf("AnotherInt fields differ: \"%+v\" != \"%+v\"\n", this.AnotherInt, that.AnotherInt)
 		equal = false
 	}
 
