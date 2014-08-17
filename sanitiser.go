@@ -45,13 +45,12 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 	var t reflect.Type
 	var ok bool
 
-	dbg("%v.%v(type %T)\n", hierarchy, obj, obj)
-
-	// make sure this is a pointer, so that we can update the contents if needed
 	if v, ok = obj.(reflect.Value); !ok {
 
 		v = reflect.ValueOf(obj)
 	}
+
+	dbg("%v.%v(type %T)\n", hierarchy, v, obj)
 
 	for v.Kind() == reflect.Ptr && reflect.Indirect(v).Kind() == reflect.Interface {
 
@@ -65,7 +64,13 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
 		dbg("Object of type %T supports the Sanitiser interface, invoking Sanitise()\n", v.Interface())
 		s.Sanitise(context)
-		//v = reflect.ValueOf(s.Sanitise(context)).Elem()
+	} else if v.CanAddr() {
+
+		if s, ok := v.Addr().Interface().(Sanitiser); ok {
+
+			dbg("Object of type %T supports the Sanitiser interface, invoking Sanitise()\n", v.Interface())
+			s.Sanitise(context)
+		}
 	} else {
 
 		dbg("Object of type %T does not supports the Sanitiser interface\n", v.Interface())
@@ -82,7 +87,7 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 		return nil
 	}
 
-	dbg("%v.%v(type %T)\n", hierarchy, v, v)
+	dbg("%v.%v(type %T)\n", hierarchy, v, v.Interface())
 
 	t = reflect.TypeOf(v.Interface())
 	k := t.Kind()
@@ -94,6 +99,21 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
 			dbg("Processing object %v.%v[%v]\n", hierarchy, t.Name(), key)
 			if err := traverseObjects(v.MapIndex(key), context, hierarchy+"["+fmt.Sprintf("%v", key)+"]"); err != nil {
+
+				return err
+			}
+		}
+	} else if (k == reflect.Slice || k == reflect.Array) &&
+		(v.Len() > 0) &&
+		((v.Index(0).Kind() == reflect.Struct) || ((v.Index(0).Kind() == reflect.Ptr) && (reflect.Indirect(v.Index(0)).Kind() == reflect.Struct))) {
+
+		dbg("Processing list %v.%v(type %T)\n", hierarchy, v, v.Interface())
+
+		for i := 0; i < v.Len(); i++ {
+
+			dbg("Processing list %v.%v(type %T) item #%v\n", hierarchy, v, v.Interface(), i)
+
+			if err := traverseObjects(v.Index(i), context, fmt.Sprint(hierarchy, "[", i, "]")); err != nil {
 
 				return err
 			}
@@ -110,7 +130,7 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
 				// the sanitise tag's value should be a comma-separated list of
 				// contexts
-				dbg("Field %v.%v(type %T) has a sanitise tag\n", hierarchy, field.Name, v.Field(i))
+				dbg("Field %v.%v(type %T) has a sanitise tag\n", hierarchy, field.Name, v.Field(i).Interface())
 				contexts := parseTag(tag)
 				if contains(contexts, context) || contains(contexts, "*") {
 					// sanitise this field
@@ -129,7 +149,12 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 				}
 			}
 
-			if field_kind == reflect.Struct || field_kind == reflect.Interface || field_kind == reflect.Ptr || field_kind == reflect.Map {
+			if field_kind == reflect.Struct ||
+				field_kind == reflect.Interface ||
+				field_kind == reflect.Ptr ||
+				field_kind == reflect.Map ||
+				field_kind == reflect.Slice ||
+				field_kind == reflect.Array {
 
 				var sv reflect.Value
 
@@ -143,7 +168,7 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 
 				if !sv.IsNil() {
 
-					dbg("Processing object %v.%v(type %T)\n", hierarchy, sv, sv)
+					dbg("Processing object %v.%v(type %T)\n", hierarchy, sv, sv.Interface())
 
 					if err := traverseObjects(sv, context, hierarchy+"."+t.Field(i).Name); err != nil {
 

@@ -1,6 +1,9 @@
 package sanitiser
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 type testStruct1 struct {
 	StringField    string                  `sanitise:"*"`
@@ -8,6 +11,8 @@ type testStruct1 struct {
 	FloatField     float64                 `sanitise:"testContext2"`
 	ByteSliceField []byte                  `sanitise:"testContext1"`
 	MapField       map[string]*testStruct1 `sanitise:"testContext1"`
+	ListField      []testStruct2           `sanitise:"testContext1"`
+	PtrListField   []*testStruct2          `sanitise:"testContext1"`
 	StructPtrField *testStruct1            `sanitise:"testContext2"`
 	StructField    testStruct2             `sanitise:"testContext2"`
 	InterfaceField interface{}             `sanitise:"testContext1"`
@@ -44,11 +49,13 @@ func (o *testStruct2) Sanitise(context string) {
 
 func newTestObj(depth int) (obj *testStruct1) {
 
-	obj = &testStruct1{"String Value", 4, 5.27, []byte("bytes"), map[string]*testStruct1{}, nil, testStruct2{}, "some string", 7}
+	obj = &testStruct1{"String Value", 4, 5.27, []byte("bytes"), map[string]*testStruct1{}, []testStruct2{}, []*testStruct2{}, nil, testStruct2{}, "some string", 7}
 
 	if depth > 0 {
 
 		obj.MapField["testObj"] = newTestObj(depth - 1)
+		obj.ListField = []testStruct2{testStruct2{"Another String", 6, 90.27, []byte("and some more bytes"), "Yet Another String", 8}}
+		obj.PtrListField = []*testStruct2{&testStruct2{"Another String", 6, 90.27, []byte("and some more bytes"), "Yet Another String", 8}}
 		obj.StructPtrField = newTestObj(depth - 1)
 		obj.StructField = testStruct2{"Another String", 6, 90.27, []byte("and some more bytes"), "Yet Another String", 8}
 		obj.InterfaceField = &testStruct2{"Another String", 6, 90.27, []byte("and some more bytes"), "Yet Another String", 8}
@@ -63,6 +70,8 @@ func (obj *testStruct1) expectContext1() *testStruct1 {
 	obj.IntField = 0
 	obj.ByteSliceField = []byte("")
 	obj.MapField = map[string]*testStruct1{}
+	obj.ListField = []testStruct2{}
+	obj.PtrListField = []*testStruct2{}
 	obj.InterfaceField = nil
 	obj.AnotherInt = 0
 
@@ -93,26 +102,36 @@ func (obj *testStruct1) expectContext2() *testStruct1 {
 		v.expectContext2()
 	}
 
+	for i, v := range obj.ListField {
+
+		obj.ListField[i] = *v.expectContext2()
+	}
+
+	for _, v := range obj.PtrListField {
+
+		v.expectContext2()
+	}
+
 	return obj
 }
 
-func (obj testStruct2) expectContext1() *testStruct2 {
+func (obj *testStruct2) expectContext1() *testStruct2 {
 
 	obj.StringField = ""
 	obj.IntField = 0
 	obj.ByteSliceField = []byte("")
 	obj.AnotherString = ""
 
-	return &obj
+	return obj
 }
 
-func (obj testStruct2) expectContext2() *testStruct2 {
+func (obj *testStruct2) expectContext2() *testStruct2 {
 
 	obj.StringField = ""
 	obj.FloatField = 0.0
 	obj.AnotherInt = 0
 
-	return &obj
+	return obj
 }
 
 func (this testStruct1) equals(that testStruct1, t *testing.T) (equal bool) {
@@ -148,6 +167,24 @@ func (this testStruct1) equals(that testStruct1, t *testing.T) (equal bool) {
 		if !v.equals(*that.MapField[k], t) {
 
 			t.Logf("Map members %v differ: %+v != %+v\n", k, v, this.MapField[k])
+			equal = false
+		}
+	}
+
+	for i, v := range this.ListField {
+
+		if !v.equals(that.ListField[i], t) {
+
+			t.Logf("List members %v differ: %+v != %+v\n", i, v, this.ListField[i])
+			equal = false
+		}
+	}
+
+	for i, v := range this.PtrListField {
+
+		if !v.equals(*that.PtrListField[i], t) {
+
+			t.Logf("List members %v differ: %+v != %+v\n", i, v, this.PtrListField[i])
 			equal = false
 		}
 	}
@@ -260,6 +297,14 @@ func TestSimpleC1(t *testing.T) {
 
 		expected := newTestObj(testObjDepth).expectContext1()
 
+		if testing.Verbose() {
+
+			expected_json, _ := json.MarshalIndent(expected, "", "    ")
+			o_json, _ := json.MarshalIndent(o, "", "    ")
+
+			t.Logf("Expecting: %v\nSanitised object: %v", string(expected_json), string(o_json))
+		}
+
 		if !expected.equals(*o, t) {
 
 			t.Errorf("[testContext1] Sanitised object does not match expected results:\nExpected %+v\nSanitised %+v\n", expected, o)
@@ -283,6 +328,14 @@ func TestSimpleC2(t *testing.T) {
 	} else {
 
 		expected := newTestObj(testObjDepth).expectContext2()
+
+		if testing.Verbose() {
+
+			expected_json, _ := json.MarshalIndent(expected, "", "    ")
+			o_json, _ := json.MarshalIndent(o, "", "    ")
+
+			t.Logf("Expecting: %v\nSanitised object: %v", string(expected_json), string(o_json))
+		}
 
 		if !expected.equals(*o, t) {
 
