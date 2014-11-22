@@ -17,6 +17,7 @@ type testStruct1 struct {
 	StructField    testStruct2             `sanitise:"testContext2"`
 	InterfaceField interface{}             `sanitise:"testContext1"`
 	AnotherInt     int
+	hiddenIntField int `sanitise:"testContext1"`
 }
 
 type testStruct2 struct {
@@ -49,7 +50,7 @@ func (o *testStruct2) Sanitise(context string) {
 
 func newTestObj(depth int) (obj *testStruct1) {
 
-	obj = &testStruct1{"String Value", 4, 5.27, []byte("bytes"), map[string]*testStruct1{}, []testStruct2{}, []*testStruct2{}, nil, testStruct2{}, "some string", 7}
+	obj = &testStruct1{"String Value", 4, 5.27, []byte("bytes"), map[string]*testStruct1{}, []testStruct2{}, []*testStruct2{}, nil, testStruct2{}, "some string", 7, 8}
 
 	if depth > 0 {
 
@@ -231,6 +232,12 @@ func (this testStruct1) equals(that testStruct1, t *testing.T) (equal bool) {
 	if this.AnotherInt != that.AnotherInt {
 
 		t.Logf("Int fields differ: %+v != %+v\n", this.AnotherInt, that.AnotherInt)
+		equal = false
+	}
+
+	if this.hiddenIntField != that.hiddenIntField {
+
+		t.Logf("Int fields differ: %+v != %+v\n", this.hiddenIntField, that.hiddenIntField)
 		equal = false
 	}
 

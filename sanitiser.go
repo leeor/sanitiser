@@ -126,6 +126,12 @@ func traverseObjects(obj interface{}, context string, hierarchy string) error {
 			field := t.Field(i)
 			field_kind := field.Type.Kind()
 
+			if !v.Field(i).CanInterface() {
+
+				dbg("Cannot access field %v.%v(%v)\n", hierarchy, t.Field(i).Name, t.Field(i).Type)
+				continue
+			}
+
 			if tag := field.Tag.Get("sanitise"); len(tag) > 0 {
 
 				// the sanitise tag's value should be a comma-separated list of
