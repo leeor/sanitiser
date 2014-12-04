@@ -17,5 +17,7 @@ Calling sanitise.Sanitiser() with an instance of the User struct will scrub (set
 When used on objects that are getting serialised together with the `omitempty` directive, the serialised representation will be completely clean of any sensitive data.
 
 ## TODO
+* Figure out a mechanism for a less destructive process, i.e., create a
+  sanitised copy, or allow restoring sanitised values
 * Support list of contexts in call to `Sanitise()`
 * Improve debug messages
