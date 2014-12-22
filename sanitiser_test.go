@@ -235,12 +235,6 @@ func (this testStruct1) equals(that testStruct1, t *testing.T) (equal bool) {
 		equal = false
 	}
 
-	if this.hiddenIntField != that.hiddenIntField {
-
-		t.Logf("Int fields differ: %+v != %+v\n", this.hiddenIntField, that.hiddenIntField)
-		equal = false
-	}
-
 	return
 }
 
@@ -297,25 +291,27 @@ func TestSimpleC1(t *testing.T) {
 	}
 
 	o := newTestObj(testObjDepth)
-	if err := Sanitise(o, "testContext1"); err != nil {
 
-		t.Errorf("Call to Sanitise returned with error:\n%v", err)
-	} else {
+	sanitised := Sanitise(o, "testContext1")
+	expected := newTestObj(testObjDepth).expectContext1()
 
-		expected := newTestObj(testObjDepth).expectContext1()
+	if testing.Verbose() {
 
-		if testing.Verbose() {
+		expected_json, _ := json.MarshalIndent(expected, "", "    ")
+		o_json, _ := json.MarshalIndent(sanitised, "", "    ")
 
-			expected_json, _ := json.MarshalIndent(expected, "", "    ")
-			o_json, _ := json.MarshalIndent(o, "", "    ")
+		t.Logf("Expecting: %v\nSanitised object: %v", string(expected_json), string(o_json))
+	}
 
-			t.Logf("Expecting: %v\nSanitised object: %v", string(expected_json), string(o_json))
-		}
+	if ts1, ok := sanitised.(*testStruct1); ok {
 
-		if !expected.equals(*o, t) {
+		if !expected.equals(*ts1, t) {
 
 			t.Errorf("[testContext1] Sanitised object does not match expected results:\nExpected %+v\nSanitised %+v\n", expected, o)
 		}
+	} else {
+
+		t.Errorf("[testContext1] Sanitised object is not of the expected type: %T instead of testStruct1\n", sanitised)
 	}
 }
 
@@ -329,24 +325,26 @@ func TestSimpleC2(t *testing.T) {
 	}
 
 	o := newTestObj(testObjDepth)
-	if err := Sanitise(o, "testContext2"); err != nil {
 
-		t.Errorf("Call to Sanitise returned with error:\n%v", err)
-	} else {
+	sanitised := Sanitise(o, "testContext2")
+	expected := newTestObj(testObjDepth).expectContext2()
 
-		expected := newTestObj(testObjDepth).expectContext2()
+	if testing.Verbose() {
 
-		if testing.Verbose() {
+		expected_json, _ := json.MarshalIndent(expected, "", "    ")
+		o_json, _ := json.MarshalIndent(sanitised, "", "    ")
 
-			expected_json, _ := json.MarshalIndent(expected, "", "    ")
-			o_json, _ := json.MarshalIndent(o, "", "    ")
+		t.Logf("Expecting: %v\nSanitised object: %v", string(expected_json), string(o_json))
+	}
 
-			t.Logf("Expecting: %v\nSanitised object: %v", string(expected_json), string(o_json))
-		}
+	if ts1, ok := sanitised.(*testStruct1); ok {
 
-		if !expected.equals(*o, t) {
+		if !expected.equals(*ts1, t) {
 
 			t.Errorf("[testContext2] Sanitised object does not match expected results:\nExpected %+v\nSanitised %+v\n", expected, o)
 		}
+	} else {
+
+		t.Errorf("[testContext2] Sanitised object is not of the expected type: %T instead of testStruct1\n", sanitised)
 	}
 }

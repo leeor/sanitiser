@@ -1,7 +1,6 @@
 package sanitiser
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 )
@@ -37,160 +36,139 @@ func contains(contexts []string, context string) bool {
 	return false
 }
 
-func traverseObjects(obj interface{}, context string, hierarchy string) error {
+func Sanitise(obj interface{}, context string) interface{} {
+	// Wrap the original in a reflect.Value
+	original := reflect.ValueOf(obj)
 
-	// TODO: improve debug messages
+	sanitised := reflect.New(original.Type()).Elem()
+	sanitiseRecursive(sanitised, original, context)
 
-	var v reflect.Value
-	var t reflect.Type
-	var ok bool
+	// Remove the reflection wrapper
+	return sanitised.Interface()
+}
 
-	if v, ok = obj.(reflect.Value); !ok {
+func shouldSanitiseField(field reflect.Value, structField reflect.StructField, context string) bool {
 
-		v = reflect.ValueOf(obj)
+	if !field.CanSet() {
+		// Can sub-fields of a non-settable field be settable themselves?
+		return false
 	}
 
-	dbg("%v.%v(type %T)\n", hierarchy, v, obj)
-
-	for v.Kind() == reflect.Ptr && reflect.Indirect(v).Kind() == reflect.Interface {
-
-		dbg("object is a pointer to an interface, calling Elem()\n")
-		v = v.Elem()
+	if tag := structField.Tag.Get("sanitise"); len(tag) > 0 {
+		// the sanitise tag's value should be a comma-separated list of
+		// contexts
+		contexts := parseTag(tag)
+		if contains(contexts, context) || contains(contexts, "*") {
+			return true
+		}
 	}
 
-	// Start by calling the Sanitise method if the object has the Sanitiser
-	// interface
-	if s, ok := v.Interface().(Sanitiser); ok {
+	return false
+}
 
-		dbg("Object of type %T supports the Sanitiser interface, invoking Sanitise()\n", v.Interface())
-		s.Sanitise(context)
-	} else if v.CanAddr() {
+// Recursive traversal code based on code from https://gist.github.com/hvoecking/10772475
+func sanitiseRecursive(sanitised, original reflect.Value, context string) {
+	switch original.Kind() {
+	// The first cases handle nested structures and sanitise them recursively
 
-		if s, ok := v.Addr().Interface().(Sanitiser); ok {
+	case reflect.Ptr:
+		// If it is a pointer we need to unwrap and call once again
 
-			dbg("Object of type %T supports the Sanitiser interface, invoking Sanitise()\n", v.Interface())
+		// To get the actual value of the original we have to call Elem()
+		// At the same time this unwraps the pointer so we don't end up in
+		// an infinite recursion
+		originalValue := original.Elem()
+		// Check if the pointer is nil
+		if !originalValue.IsValid() {
+
+			return
+		}
+		// Allocate a new object and set the pointer to it
+		sanitised.Set(reflect.New(originalValue.Type()))
+		// Unwrap the newly created pointer
+		sanitiseRecursive(sanitised.Elem(), originalValue, context)
+
+	case reflect.Interface:
+		// If it is an interface (which is very similar to a pointer), do basically the
+		// same as for the pointer. Though a pointer is not the same as an interface so
+		// note that we have to call Elem() after creating a new object because otherwise
+		// we would end up with an actual pointer
+
+		// Get rid of the wrapping interface
+		originalValue := original.Elem()
+		// Create a new object. Now new gives us a pointer, but we want the value it
+		// points to, so we have to call Elem() to unwrap it
+		sanitisedValue := reflect.New(originalValue.Type()).Elem()
+		sanitiseRecursive(sanitisedValue, originalValue, context)
+		sanitised.Set(sanitisedValue)
+
+	case reflect.Struct:
+		// If it is a struct we sanitise each field
+		typ := reflect.TypeOf(original.Interface())
+		for i := 0; i < original.NumField(); i += 1 {
+
+			dbg("Processing field %v\n", typ.Field(i).Name)
+			if shouldSanitiseField(original.Field(i), typ.Field(i), context) {
+				// sanitise this field
+				dbg("-> Sanitising field %v\n", typ.Field(i).Name)
+			} else {
+
+				sanitiseRecursive(sanitised.Field(i), original.Field(i), context)
+			}
+		}
+
+	case reflect.Slice:
+		// If it is a slice we create a new slice and sanitise each element
+		sanitised.Set(reflect.MakeSlice(original.Type(), original.Len(), original.Cap()))
+		for i := 0; i < original.Len(); i += 1 {
+
+			sanitiseRecursive(sanitised.Index(i), original.Index(i), context)
+		}
+
+	case reflect.Map:
+		// If it is a map we create a new map and sanitise each value
+		sanitised.Set(reflect.MakeMap(original.Type()))
+		for _, key := range original.MapKeys() {
+
+			originalValue := original.MapIndex(key)
+			// New gives us a pointer, but again we want the value
+			sanitisedValue := reflect.New(originalValue.Type()).Elem()
+			sanitiseRecursive(sanitisedValue, originalValue, context)
+
+			sanitisedKey := reflect.New(key.Type()).Elem()
+			sanitiseRecursive(sanitisedKey, key, context)
+			sanitised.SetMapIndex(sanitisedKey, sanitisedValue)
+		}
+
+	default:
+		// And everything else will simply be taken from the original
+		if sanitised.CanSet() {
+
+			sanitised.Set(original)
+		}
+	}
+
+	if sanitised.CanInterface() {
+
+		if s, ok := sanitised.Interface().(Sanitiser); ok {
+
+			dbg("Object of type %T supports the Sanitiser interface, invoking Sanitise()\n", sanitised.Interface())
 			s.Sanitise(context)
+		} else if sanitised.CanAddr() {
+
+			if s, ok := sanitised.Addr().Interface().(Sanitiser); ok {
+
+				dbg("Object of type %T supports the Sanitiser interface, invoking Sanitise()\n", sanitised.Addr().Interface())
+				s.Sanitise(context)
+			}
+		} else {
+
+			dbg("Object of type %T does not supports the Sanitiser interface\n", sanitised.Interface())
 		}
 	} else {
 
-		dbg("Object of type %T does not supports the Sanitiser interface\n", v.Interface())
+		dbg("Not attempting to invoke Sanitiser interface on an inaccessible object\n")
 	}
-
-	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
-
-		dbg("object is a pointer or an interface, calling Elem()\n")
-		v = v.Elem()
-	}
-
-	if !v.IsValid() {
-
-		return nil
-	}
-
-	dbg("%v.%v(type %T)\n", hierarchy, v, v.Interface())
-
-	t = reflect.TypeOf(v.Interface())
-	k := t.Kind()
-
-	if k == reflect.Map {
-
-		keys := v.MapKeys()
-		for _, key := range keys {
-
-			dbg("Processing object %v.%v[%v]\n", hierarchy, t.Name(), key)
-			if err := traverseObjects(v.MapIndex(key), context, hierarchy+"["+fmt.Sprintf("%v", key)+"]"); err != nil {
-
-				return err
-			}
-		}
-	} else if (k == reflect.Slice || k == reflect.Array) &&
-		(v.Len() > 0) &&
-		((v.Index(0).Kind() == reflect.Struct) || ((v.Index(0).Kind() == reflect.Ptr) && (reflect.Indirect(v.Index(0)).Kind() == reflect.Struct))) {
-
-		dbg("Processing list %v.%v(type %T)\n", hierarchy, v, v.Interface())
-
-		for i := 0; i < v.Len(); i++ {
-
-			dbg("Processing list %v.%v(type %T) item #%v\n", hierarchy, v, v.Interface(), i)
-
-			if err := traverseObjects(v.Index(i), context, fmt.Sprint(hierarchy, "[", i, "]")); err != nil {
-
-				return err
-			}
-		}
-	} else if k == reflect.Struct {
-
-		for i := 0; i < t.NumField(); i++ {
-
-			dbg("Processing field %v.%v(%v)\n", hierarchy, t.Field(i).Name, t.Field(i).Type)
-			field := t.Field(i)
-			field_kind := field.Type.Kind()
-
-			if !v.Field(i).CanInterface() {
-
-				dbg("Cannot access field %v.%v(%v)\n", hierarchy, t.Field(i).Name, t.Field(i).Type)
-				continue
-			}
-
-			if tag := field.Tag.Get("sanitise"); len(tag) > 0 {
-
-				// the sanitise tag's value should be a comma-separated list of
-				// contexts
-				dbg("Field %v.%v(type %T) has a sanitise tag\n", hierarchy, field.Name, v.Field(i).Interface())
-				contexts := parseTag(tag)
-				if contains(contexts, context) || contains(contexts, "*") {
-					// sanitise this field
-					if !v.Field(i).CanSet() {
-
-						return fmt.Errorf("Unable to set zero value for %v.%v", hierarchy, t.Field(i).Name)
-					}
-
-					dbg("Sanitising field %v.%v\n", hierarchy, t.Field(i).Name)
-					v.Field(i).Set(reflect.New(t.Field(i).Type).Elem())
-
-					// no point in continuing to traverse this field, even if
-					// it's a struct of some sort, it was assigned the zero
-					// value.
-					continue
-				}
-			}
-
-			if field_kind == reflect.Struct ||
-				field_kind == reflect.Interface ||
-				field_kind == reflect.Ptr ||
-				field_kind == reflect.Map ||
-				field_kind == reflect.Slice ||
-				field_kind == reflect.Array {
-
-				var sv reflect.Value
-
-				if field_kind != reflect.Ptr {
-
-					sv = v.Field(i).Addr()
-				} else {
-
-					sv = v.Field(i)
-				}
-
-				if !sv.IsNil() {
-
-					dbg("Processing object %v.%v(type %T)\n", hierarchy, sv, sv.Interface())
-
-					if err := traverseObjects(sv, context, hierarchy+"."+t.Field(i).Name); err != nil {
-
-						return err
-					}
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func Sanitise(obj interface{}, context string) error {
-
-	return traverseObjects(obj, context, "")
 }
 
 func nullLogger(format string, v ...interface{}) {
